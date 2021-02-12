@@ -371,6 +371,14 @@ func ext_crypto_secp256k1_ecdsa_recover_version_1(context unsafe.Pointer, sig, m
 	message := memory[msg : msg+32]
 	signature := memory[sig : sig+65]
 	//signature[64] += 27
+	if signature[64] == 27 {
+		signature[64] = 0
+	}
+
+	if signature[64] == 28 {
+		signature[64] = 1
+	}
+
 	logger.Debug("[ext_crypto_secp256k1_ecdsa_recover_version_1]", "sig", fmt.Sprintf("0x%x", signature))
 
 	pub, err := secp256k1.RecoverPublicKey(message, signature)
