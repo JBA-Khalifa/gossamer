@@ -175,15 +175,11 @@ func (sm *StateModule) GetPairs(r *http.Request, req *StatePairRequest, res *Sta
 	)
 
 	if req.Bhash != nil {
-		fmt.Println("GetPairs", "bhash", req.Bhash)
 		stateRootHash, err = sm.storageAPI.GetStateRootFromBlock(req.Bhash)
 		if err != nil {
-			fmt.Println("GetPairs", "failed to get state root", err)
 			return err
 		}
 	}
-
-	fmt.Println("GetPairs", "stateroot", stateRootHash)
 
 	if req.Prefix == nil || *req.Prefix == "" || *req.Prefix == "0x" {
 		pairs, err := sm.storageAPI.Entries(stateRootHash)
