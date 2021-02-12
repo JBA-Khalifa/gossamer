@@ -551,19 +551,19 @@ func TestInstance_ExecuteBlock_KusamaRuntime_KusamaBlock1(t *testing.T) {
 }
 
 func TestInstance_ExecuteBlock_KusamaRuntime_KusamaBlock3784(t *testing.T) {
-	gossTrie3793 := newTrieFromPairs(t, "../../../block3783_gossamer.out")
+	gossTrie3783 := newTrieFromPairs(t, "../../../block3783_gossamer.out")
 	expectedRoot := common.MustHexToHash("0x948338bc0976aee78879d559a1f42385407e5a481b05a91d2a9386aa7507e7a0")
-	require.Equal(t, expectedRoot, gossTrie3793.MustHash())
+	require.Equal(t, expectedRoot, gossTrie3783.MustHash())
 
 	// set state to genesis state
-	state3793, err := storage.NewTrieState(gossTrie3793)
+	state3783, err := storage.NewTrieState(gossTrie3783)
 	require.NoError(t, err)
 
 	cfg := &Config{}
-	cfg.Storage = state3793
+	cfg.Storage = state3783
 	cfg.LogLvl = 4
 
-	instance, err := NewInstanceFromTrie(gossTrie3793, cfg)
+	instance, err := NewInstanceFromTrie(gossTrie3783, cfg)
 	require.NoError(t, err)
 
 	// block data is received from querying a polkadot node
@@ -579,11 +579,11 @@ func TestInstance_ExecuteBlock_KusamaRuntime_KusamaBlock3784(t *testing.T) {
 	digest, err := types.DecodeDigest(r)
 	require.NoError(t, err)
 
-	// kusama block 3974, from polkadot.js
+	// kusama block 3784, from polkadot.js
 	block := &types.Block{
 		Header: &types.Header{
 			ParentHash:     common.MustHexToHash("0x4843b4aa38cf2e3e2f6fae401b98dd705bed668a82dd3751dc38f1601c814ca8"),
-			Number:         big.NewInt(3974),
+			Number:         big.NewInt(3784),
 			StateRoot:      common.MustHexToHash("0xac44cc18ec22f0f3fca39dfe8725c0383af1c982a833e081fbb2540e46eb09a5"),
 			ExtrinsicsRoot: common.MustHexToHash("0x52b7d4852fc648cb8f908901e1e36269593c25050c31718454bca74b69115d12"),
 			Digest:         digest,
