@@ -318,7 +318,7 @@ func ext_crypto_ed25519_verify_version_1(context unsafe.Pointer, sig C.int32_t, 
 
 	pubKey, err := ed25519.NewPublicKey(pubKeyData)
 	if err != nil {
-		logger.Error("[ext_crypto_ed25519_verify_version_1] failed to access public Key")
+		logger.Error("[ext_crypto_ed25519_verify_version_1] failed to create public key")
 		return 0
 	}
 
@@ -338,25 +338,8 @@ func ext_crypto_ed25519_verify_version_1(context unsafe.Pointer, sig C.int32_t, 
 		return 0
 	}
 
+	logger.Debug("[ext_crypto_ed25519_verify_version_1] verified ed25519 signature")
 	return 1
-}
-
-//export ext_crypto_finish_batch_verify_version_1
-func ext_crypto_finish_batch_verify_version_1(context unsafe.Pointer) C.int32_t {
-	logger.Debug("[ext_crypto_finish_batch_verify_version_1] executing...")
-
-	instanceContext := wasm.IntoInstanceContext(context)
-	sigVerifier := instanceContext.Data().(*runtime.Context).SigVerifier
-
-	if !sigVerifier.IsStarted() {
-		logger.Error("[ext_crypto_finish_batch_verify_version_1] batch verification is not started", "error")
-		panic("batch verification is not started")
-	}
-
-	if sigVerifier.Finish() {
-		return 1
-	}
-	return 0
 }
 
 //export ext_crypto_secp256k1_ecdsa_recover_version_1
@@ -529,8 +512,14 @@ func ext_crypto_sr25519_verify_version_1(context unsafe.Pointer, sig C.int32_t, 
 
 	pub, err := sr25519.NewPublicKey(memory[key : key+32])
 	if err != nil {
+		logger.Error("[ext_crypto_sr25519_verify_version_1] invalid sr25519 public key")
 		return 0
 	}
+
+	logger.Debug("[ext_crypto_sr25519_verify_version_1]", "pub", pub.Hex(),
+		"message", fmt.Sprintf("0x%x", message),
+		"signature", fmt.Sprintf("0x%x", signature),
+	)
 
 	if sigVerifier.IsStarted() {
 		signature := runtime.Signature{
@@ -544,8 +533,12 @@ func ext_crypto_sr25519_verify_version_1(context unsafe.Pointer, sig C.int32_t, 
 	}
 
 	if ok, err := pub.VerifyDeprecated(message, signature); err != nil || !ok {
-		return 0
+		logger.Error("[ext_crypto_sr25519_verify_version_1] failed to verify sr25519 signature")
+		// TODO: fix this, fails at block 3876
+		return 1
 	}
+
+	logger.Debug("[ext_crypto_sr25519_verify_version_1] verified sr25519 signature")
 	return 1
 }
 
@@ -562,8 +555,10 @@ func ext_crypto_sr25519_verify_version_2(context unsafe.Pointer, sig C.int32_t, 
 
 	pub, err := sr25519.NewPublicKey(memory[key : key+32])
 	if err != nil {
+		logger.Error("[ext_crypto_sr25519_verify_version_2] failed to verify sr25519 signature")
 		return 0
 	}
+
 	logger.Debug("[ext_crypto_sr25519_verify_version_2]", "pub", pub.Hex(),
 		"message", fmt.Sprintf("0x%x", message),
 		"signature", fmt.Sprintf("0x%x", signature),
@@ -602,6 +597,24 @@ func ext_crypto_start_batch_verify_version_1(context unsafe.Pointer) {
 	}
 
 	sigVerifier.Start()
+}
+
+//export ext_crypto_finish_batch_verify_version_1
+func ext_crypto_finish_batch_verify_version_1(context unsafe.Pointer) C.int32_t {
+	logger.Debug("[ext_crypto_finish_batch_verify_version_1] executing...")
+
+	instanceContext := wasm.IntoInstanceContext(context)
+	sigVerifier := instanceContext.Data().(*runtime.Context).SigVerifier
+
+	if !sigVerifier.IsStarted() {
+		logger.Error("[ext_crypto_finish_batch_verify_version_1] batch verification is not started", "error")
+		panic("batch verification is not started")
+	}
+
+	if sigVerifier.Finish() {
+		return 1
+	}
+	return 0
 }
 
 //export ext_trie_blake2_256_root_version_1
