@@ -370,6 +370,8 @@ func ext_crypto_secp256k1_ecdsa_recover_version_1(context unsafe.Pointer, sig, m
 	// recovery id as the last element
 	message := memory[msg : msg+32]
 	signature := memory[sig : sig+65]
+	//signature[64] += 27
+	logger.Debug("[ext_crypto_secp256k1_ecdsa_recover_version_1]", "sig", fmt.Sprintf("0x%x", signature))
 
 	pub, err := secp256k1.RecoverPublicKey(message, signature)
 	if err != nil {
@@ -383,7 +385,9 @@ func ext_crypto_secp256k1_ecdsa_recover_version_1(context unsafe.Pointer, sig, m
 		return C.int64_t(ret)
 	}
 
-	ret, err := toWasmMemoryResult(instanceContext, pub)
+	logger.Debug("[ext_crypto_secp256k1_ecdsa_recover_version_1]", "len", len(pub), "recovered public key", fmt.Sprintf("0x%x", pub))
+
+	ret, err := toWasmMemoryResult(instanceContext, pub[1:])
 	if err != nil {
 		logger.Error("[ext_crypto_secp256k1_ecdsa_recover_version_1] failed to allocate memory", "error", err)
 		return 0
@@ -1031,7 +1035,7 @@ func ext_hashing_blake2_256_version_1(context unsafe.Pointer, dataSpan C.int64_t
 		return 0
 	}
 
-	logger.Debug("[ext_hashing_blake2_256_version_1]", "data", data, "hash", hash)
+	logger.Debug("[ext_hashing_blake2_256_version_1]", "data", fmt.Sprintf("0x%x", data), "hash", hash)
 
 	out, err := toWasmMemorySized(instanceContext, hash[:], 32)
 	if err != nil {
@@ -1055,7 +1059,7 @@ func ext_hashing_keccak_256_version_1(context unsafe.Pointer, dataSpan C.int64_t
 		return 0
 	}
 
-	logger.Debug("[ext_hashing_keccak_256_version_1]", "data", data, "hash", hash)
+	logger.Debug("[ext_hashing_keccak_256_version_1]", "data", fmt.Sprintf("0x%x", data), "hash", hash)
 
 	out, err := toWasmMemorySized(instanceContext, hash[:], 32)
 	if err != nil {

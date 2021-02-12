@@ -43,12 +43,12 @@ func (r *Result) Encode() ([]byte, error) {
 		return []byte{1}, nil
 	}
 
-	value, err := scale.Encode(r.data)
-	if err != nil {
-		return nil, err
-	}
+	// value, err := scale.Encode(r.data)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return append([]byte{0}, value...), nil
+	return append([]byte{0}, r.data...), nil
 }
 
 // Decode return a Result from scale encoded data
@@ -65,6 +65,7 @@ func (r *Result) Decode(reader io.Reader) (*Result, error) {
 	r.isErr = exists
 
 	if r.isErr == 0 {
+		// TODO: update this
 		sd := scale.Decoder{Reader: reader}
 		value, err := sd.DecodeByteArray()
 		if err != nil {

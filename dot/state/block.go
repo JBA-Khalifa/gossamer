@@ -268,6 +268,16 @@ func (bs *BlockState) GetHeader(hash common.Hash) (*types.Header, error) {
 	return result, err
 }
 
+// GetStateRoot returns the state root of the block with the given hash
+func (bs *BlockState) GetStateRoot(bhash common.Hash) (common.Hash, error) {
+	header, err := bs.GetHeader(bhash)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return header.StateRoot, nil
+}
+
 // GetHeaderByNumber returns a block header given a number
 func (bs *BlockState) GetHeaderByNumber(num *big.Int) (*types.Header, error) {
 	bh, err := bs.db.Get(headerHashKey(num.Uint64()))
