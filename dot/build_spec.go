@@ -22,7 +22,6 @@ import (
 	"github.com/ChainSafe/gossamer/dot/state"
 	"github.com/ChainSafe/gossamer/lib/common"
 	"github.com/ChainSafe/gossamer/lib/genesis"
-	"github.com/ChainSafe/gossamer/lib/scale"
 	log "github.com/ChainSafe/log15"
 )
 
@@ -50,6 +49,7 @@ func (b *BuildSpec) ToJSONRaw() ([]byte, error) {
 	tmpGen := &genesis.Genesis{
 		Name:       b.genesis.Name,
 		ID:         b.genesis.ID,
+		ChainType:  b.genesis.ChainType,
 		Bootnodes:  b.genesis.Bootnodes,
 		ProtocolID: b.genesis.ProtocolID,
 		Genesis: genesis.Fields{
@@ -109,15 +109,16 @@ func BuildFromDB(path string) (*BuildSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	gData, err := scale.Decode(gd, &genesis.Data{})
+	gData := &genesis.Data{}
+	err = json.Unmarshal(gd, gData)
 	if err != nil {
 		return nil, err
 	}
-	tmpGen.Name = gData.(*genesis.Data).Name
-	tmpGen.ID = gData.(*genesis.Data).ID
+	tmpGen.Name = gData.Name
+	tmpGen.ID = gData.ID
 	// todo figure out how to assign bootnodes (see issue #1030)
 	//tmpGen.Bootnodes = gData.(*genesis.Data).Bootnodes
-	tmpGen.ProtocolID = gData.(*genesis.Data).ProtocolID
+	tmpGen.ProtocolID = gData.ProtocolID
 
 	bs := &BuildSpec{
 		genesis: tmpGen,
