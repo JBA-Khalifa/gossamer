@@ -1,7 +1,7 @@
 package network
 
 import (
-	"bufio"
+	"io"
 	"math/big"
 
 	"github.com/ChainSafe/gossamer/dot/types"
@@ -14,51 +14,27 @@ import (
 )
 
 func testBlockResponseMessage() *BlockResponseMessage {
-	testHeader0 := types.Header{
-		Number: big.NewInt(77),
-		Digest: types.Digest{},
+	msg := &BlockResponseMessage{
+		BlockData: []*types.BlockData{},
 	}
 
-	testHeader1 := types.Header{
-		Number: big.NewInt(78),
-		Digest: types.Digest{},
-	}
+	for i := 0; i < int(blockRequestSize); i++ {
+		testHeader := types.Header{
+			Number: big.NewInt(int64(77 + i)),
+			Digest: types.Digest{},
+		}
 
-	testHeader2 := types.Header{
-		Number: big.NewInt(79),
-		Digest: types.Digest{},
-	}
-
-	data := []*types.BlockData{
-		{
-			Hash:          testHeader0.Hash(),
-			Header:        testHeader0.AsOptional(),
-			Body:          optional.NewBody(false, nil),
-			Receipt:       optional.NewBytes(false, nil),
+		msg.BlockData = append(msg.BlockData, &types.BlockData{
+			Hash:          testHeader.Hash(),
+			Header:        testHeader.AsOptional(),
+			Body:          optional.NewBody(true, []byte{4, 4, 2}),
 			MessageQueue:  optional.NewBytes(false, nil),
-			Justification: optional.NewBytes(false, nil),
-		},
-		{
-			Hash:          testHeader1.Hash(),
-			Header:        testHeader1.AsOptional(),
-			Body:          optional.NewBody(false, nil),
 			Receipt:       optional.NewBytes(false, nil),
-			MessageQueue:  optional.NewBytes(false, nil),
 			Justification: optional.NewBytes(false, nil),
-		},
-		{
-			Hash:          testHeader2.Hash(),
-			Header:        testHeader2.AsOptional(),
-			Body:          optional.NewBody(false, nil),
-			Receipt:       optional.NewBytes(false, nil),
-			MessageQueue:  optional.NewBytes(false, nil),
-			Justification: optional.NewBytes(false, nil),
-		},
+		})
 	}
 
-	return &BlockResponseMessage{
-		BlockData: data,
-	}
+	return msg
 }
 
 type mockSyncer struct {
@@ -81,16 +57,16 @@ func (s *mockSyncer) HandleBlockAnnounce(msg *BlockAnnounceMessage) error {
 	return nil
 }
 
-func (s *mockSyncer) ProcessBlockData(data []*types.BlockData) error {
-	return nil
+func (s *mockSyncer) ProcessBlockData(data []*types.BlockData) (int, error) {
+	return 0, nil
 }
 
 func (s *mockSyncer) IsSynced() bool {
 	return s.synced
 }
 
-func (s *mockSyncer) setSyncedState(newState bool) {
-	s.synced = newState
+func (s *mockSyncer) SetSyncing(syncing bool) {
+	s.synced = !syncing
 }
 
 type testStreamHandler struct {
@@ -116,57 +92,36 @@ func (s *testStreamHandler) handleStream(stream libp2pnetwork.Stream) {
 	s.readStream(stream, peer, s.decoder, s.handleMessage)
 }
 
-func (s *testStreamHandler) handleMessage(peer peer.ID, msg Message) error {
-	s.messages[peer] = msg
+func (s *testStreamHandler) handleMessage(stream libp2pnetwork.Stream, msg Message) error {
+	s.messages[stream.Conn().RemotePeer()] = msg
 	return nil
 }
 
 func (s *testStreamHandler) readStream(stream libp2pnetwork.Stream, peer peer.ID, decoder messageDecoder, handler messageHandler) {
-	// create buffer stream for non-blocking read
-	r := bufio.NewReader(stream)
+	var (
+		maxMessageSize uint64 = maxBlockResponseSize // TODO: determine actual max message size
+		msgBytes              = make([]byte, maxMessageSize)
+	)
 
 	for {
-		length, err := readLEB128ToUint64(r)
-		if err != nil {
-			logger.Error("Failed to read LEB128 encoding", "error", err)
+		tot, err := readStream(stream, msgBytes)
+		if err == io.EOF {
+			continue
+		} else if err != nil {
+			logger.Debug("failed to read from stream", "protocol", stream.Protocol(), "error", err)
 			_ = stream.Close()
 			return
 		}
 
-		if length == 0 {
-			continue
-		}
-
-		msgBytes := make([]byte, length)
-		tot := uint64(0)
-		for i := 0; i < maxReads; i++ {
-			n, err := r.Read(msgBytes[tot:]) //nolint
-			if err != nil {
-				logger.Error("Failed to read message from stream", "error", err)
-				_ = stream.Close()
-				return
-			}
-
-			tot += uint64(n)
-			if tot == length {
-				break
-			}
-		}
-
-		if tot != length {
-			logger.Error("Failed to read entire message", "length", length, "read" /*n*/, tot)
-			continue
-		}
-
 		// decode message based on message type
-		msg, err := decoder(msgBytes, peer)
+		msg, err := decoder(msgBytes[:tot], peer)
 		if err != nil {
 			logger.Error("Failed to decode message from peer", "peer", peer, "err", err)
 			continue
 		}
 
 		// handle message based on peer status and message type
-		err = handler(peer, msg)
+		err = handler(stream, msg)
 		if err != nil {
 			logger.Error("Failed to handle message from stream", "message", msg, "error", err)
 			_ = stream.Close()
@@ -175,9 +130,11 @@ func (s *testStreamHandler) readStream(stream libp2pnetwork.Stream, peer peer.ID
 	}
 }
 
+var start, _ = variadic.NewUint64OrHash(uint64(1))
+
 var testBlockRequestMessage = &BlockRequestMessage{
-	RequestedData: 1,
-	StartingBlock: variadic.NewUint64OrHashFromBytes([]byte{1, 1, 1, 1, 1, 1, 1, 1, 1}),
+	RequestedData: RequestedDataHeader + RequestedDataBody + RequestedDataJustification,
+	StartingBlock: start,
 	EndBlockHash:  optional.NewHash(true, common.Hash{}),
 	Direction:     1,
 	Max:           optional.NewUint32(true, 1),
@@ -190,11 +147,17 @@ func testBlockRequestMessageDecoder(in []byte, _ peer.ID) (Message, error) {
 }
 
 var testBlockAnnounceMessage = &BlockAnnounceMessage{
-	Number: big.NewInt(99),
+	Number: big.NewInt(128 * 7),
 }
 
 func testBlockAnnounceMessageDecoder(in []byte, _ peer.ID) (Message, error) {
 	msg := new(BlockAnnounceMessage)
+	err := msg.Decode(in)
+	return msg, err
+}
+
+func testBlockAnnounceHandshakeDecoder(in []byte, _ peer.ID) (Message, error) {
+	msg := new(BlockAnnounceHandshake)
 	err := msg.Decode(in)
 	return msg, err
 }

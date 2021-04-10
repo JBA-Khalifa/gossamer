@@ -42,7 +42,7 @@ var maxRetries = 24
 // SetLogLevel sets the logging level for this package
 func SetLogLevel(lvl log.Lvl) {
 	h := log.StreamHandler(os.Stdout, log.TerminalFormat())
-	logger.SetHandler(log.LvlFilterHandler(log.LvlInfo, h))
+	logger.SetHandler(log.LvlFilterHandler(lvl, h))
 }
 
 var (
@@ -66,7 +66,7 @@ var (
 	// GenesisSixAuths is the genesis file that has 6 authorities
 	GenesisSixAuths string = filepath.Join(currentDir, "../utils/genesis_sixauths.json")
 	// GenesisDefault is the default gssmr genesis file
-	GenesisDefault string = filepath.Join(currentDir, "../..", "chain/gssmr/genesis-raw.json")
+	GenesisDefault string = filepath.Join(currentDir, "../..", "chain/gssmr/genesis.json")
 
 	// ConfigDefault is the default config file
 	ConfigDefault string = filepath.Join(currentDir, "../utils/config_default.toml")
@@ -95,7 +95,7 @@ func InitGossamer(idx int, basePath, genesis, config string) (*Node, error) {
 	cmdInit := exec.Command(gossamerCMD, "init",
 		"--config", config,
 		"--basepath", basePath,
-		"--genesis-raw", genesis,
+		"--genesis", genesis,
 		"--force",
 	)
 
@@ -423,16 +423,17 @@ func GenerateGenesisSixAuth() {
 func generateDefaultConfig() *ctoml.Config {
 	return &ctoml.Config{
 		Global: ctoml.GlobalConfig{
-			Name:   "Gossamer",
-			ID:     "gssmr",
-			LogLvl: "crit",
+			Name:        "Gossamer",
+			ID:          "gssmr",
+			LogLvl:      "crit",
+			MetricsPort: 9876,
 		},
 		Log: ctoml.LogConfig{
 			CoreLvl: "info",
 			SyncLvl: "info",
 		},
 		Init: ctoml.InitConfig{
-			GenesisRaw: "./chain/gssmr/genesis-raw.json",
+			Genesis: "./chain/gssmr/genesis.json",
 		},
 		Account: ctoml.AccountConfig{
 			Key:    "",

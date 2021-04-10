@@ -26,11 +26,15 @@ var (
 	ChainGetBlockHash            = "chain_getBlockHash"
 
 	// AUTHOR METHODS
-	AuthorSubmitExtrinsic = "author_submitExtrinsic"
+	AuthorSubmitExtrinsic   = "author_submitExtrinsic"
+	AuthorPendingExtrinsics = "author_pendingExtrinsics"
 
 	// STATE METHODS
 	StateGetStorage = "state_getStorage"
 
 	// DEV METHODS
 	DevControl = "dev_control"
+
+	// GRANDPA
+	GrandpaProveFinality = "grandpa_proveFinality"
 )

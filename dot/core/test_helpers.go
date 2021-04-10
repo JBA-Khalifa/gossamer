@@ -31,9 +31,9 @@ import (
 	"github.com/ChainSafe/gossamer/lib/genesis"
 	"github.com/ChainSafe/gossamer/lib/keystore"
 	"github.com/ChainSafe/gossamer/lib/runtime"
+	rtstorage "github.com/ChainSafe/gossamer/lib/runtime/storage"
 	"github.com/ChainSafe/gossamer/lib/runtime/wasmer"
 	"github.com/ChainSafe/gossamer/lib/trie"
-
 	log "github.com/ChainSafe/log15"
 	"github.com/stretchr/testify/require"
 )
@@ -41,16 +41,10 @@ import (
 // testMessageTimeout is the wait time for messages to be exchanged
 var testMessageTimeout = time.Second
 
-// testGenesisHeader is a test block header
-var testGenesisHeader = &types.Header{
-	Number:    big.NewInt(0),
-	StateRoot: trie.EmptyHash,
-}
-
 func newTestGenesisWithTrieAndHeader(t *testing.T) (*genesis.Genesis, *trie.Trie, *types.Header) {
-	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis-raw.json")
+	gen, err := genesis.NewGenesisFromJSONRaw("../../chain/gssmr/genesis.json")
 	if err != nil {
-		gen, err = genesis.NewGenesisFromJSONRaw("../../../chain/gssmr/genesis-raw.json")
+		gen, err = genesis.NewGenesisFromJSONRaw("../../../chain/gssmr/genesis.json")
 		require.NoError(t, err)
 	}
 
@@ -134,10 +128,6 @@ func NewTestService(t *testing.T, cfg *Config) *Service {
 		}
 	}
 
-	if cfg.Runtime == nil {
-		cfg.Runtime = wasmer.NewTestInstance(t, runtime.NODE_RUNTIME)
-	}
-
 	if cfg.Keystore == nil {
 		cfg.Keystore = keystore.NewGlobalKeystore()
 		kp, err := sr25519.GenerateKeypair()
@@ -157,17 +147,22 @@ func NewTestService(t *testing.T, cfg *Config) *Service {
 
 	cfg.LogLvl = 3
 
+	var stateSrvc *state.Service
 	testDatadirPath, err := ioutil.TempDir("/tmp", "test-datadir-*")
 	require.NoError(t, err)
-	stateSrvc := state.NewService(testDatadirPath, log.LvlInfo)
-	stateSrvc.UseMemDB()
 
 	gen, genTrie, genHeader := newTestGenesisWithTrieAndHeader(t)
-	err = stateSrvc.Initialize(gen, genHeader, genTrie)
-	require.Nil(t, err)
 
-	err = stateSrvc.Start()
-	require.Nil(t, err)
+	if cfg.BlockState == nil || cfg.StorageState == nil || cfg.TransactionState == nil || cfg.EpochState == nil {
+		stateSrvc = state.NewService(testDatadirPath, log.LvlInfo)
+		stateSrvc.UseMemDB()
+
+		err = stateSrvc.Initialize(gen, genHeader, genTrie)
+		require.Nil(t, err)
+
+		err = stateSrvc.Start()
+		require.Nil(t, err)
+	}
 
 	if cfg.BlockState == nil {
 		cfg.BlockState = stateSrvc.Block
@@ -183,6 +178,14 @@ func NewTestService(t *testing.T, cfg *Config) *Service {
 
 	if cfg.EpochState == nil {
 		cfg.EpochState = stateSrvc.Epoch
+	}
+
+	if cfg.Runtime == nil {
+		rtCfg := &wasmer.Config{}
+		rtCfg.Storage, err = rtstorage.NewTrieState(genTrie)
+		require.NoError(t, err)
+		cfg.Runtime, err = wasmer.NewRuntimeFromGenesis(gen, rtCfg)
+		require.NoError(t, err)
 	}
 
 	if cfg.Network == nil {
@@ -203,6 +206,7 @@ func NewTestService(t *testing.T, cfg *Config) *Service {
 
 	if net, ok := cfg.Network.(*network.Service); ok {
 		net.SetTransactionHandler(s)
+		_ = net.Stop()
 	}
 
 	return s
@@ -249,37 +253,39 @@ func (s *mockSyncer) HandleBlockAnnounce(msg *network.BlockAnnounceMessage) erro
 	return nil
 }
 
-func (s *mockSyncer) ProcessBlockData(_ []*types.BlockData) error {
-	return nil
+func (s *mockSyncer) ProcessBlockData(_ []*types.BlockData) (int, error) {
+	return 0, nil
 }
 
 func (s *mockSyncer) IsSynced() bool {
 	return false
 }
 
-type mockDigestItem struct {
+func (s *mockSyncer) SetSyncing(bool) {}
+
+type mockDigestItem struct { //nolint
 	i int
 }
 
-func newMockDigestItem(i int) *mockDigestItem {
+func newMockDigestItem(i int) *mockDigestItem { //nolint
 	return &mockDigestItem{
 		i: i,
 	}
 }
 
-func (d *mockDigestItem) String() string {
+func (d *mockDigestItem) String() string { //nolint
 	return ""
 }
 
-func (d *mockDigestItem) Type() byte {
+func (d *mockDigestItem) Type() byte { //nolint
 	return byte(d.i)
 }
 
-func (d *mockDigestItem) Encode() ([]byte, error) {
+func (d *mockDigestItem) Encode() ([]byte, error) { //nolint
 	return []byte{byte(d.i)}, nil
 }
 
-func (d *mockDigestItem) Decode(_ io.Reader) error {
+func (d *mockDigestItem) Decode(_ io.Reader) error { //nolint
 	return nil
 }
 

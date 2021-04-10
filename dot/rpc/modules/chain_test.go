@@ -297,11 +297,15 @@ func newTestStateService(t *testing.T) *state.Service {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Cleanup(func() {
+		stateSrvc.Stop()
+	})
 	return stateSrvc
 }
 
 func newTestGenesisWithTrieAndHeader() (*genesis.Genesis, *trie.Trie, *types.Header) {
-	gen, err := genesis.NewGenesisFromJSONRaw("../../../chain/gssmr/genesis-raw.json")
+	gen, err := genesis.NewGenesisFromJSONRaw("../../../chain/gssmr/genesis.json")
 	if err != nil {
 		panic(err)
 	}

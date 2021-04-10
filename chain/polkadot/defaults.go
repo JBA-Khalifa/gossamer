@@ -38,8 +38,8 @@ var (
 
 	// InitConfig
 
-	// DefaultGenesisRaw Default genesis configuration path
-	DefaultGenesisRaw = string("./chain/polkadot/genesis-raw.json")
+	// DefaultGenesis is the default genesis configuration path
+	DefaultGenesis = string("./chain/polkadot/genesis.json")
 
 	// AccountConfig
 
@@ -79,7 +79,7 @@ var (
 	// DefaultRPCHTTPPort rpc port
 	DefaultRPCHTTPPort = uint32(8545)
 	// DefaultRPCModules rpc modules
-	DefaultRPCModules = []string{"system", "author", "chain", "state", "rpc"}
+	DefaultRPCModules = []string{"system", "author", "chain", "state", "rpc", "grandpa"}
 	// DefaultRPCWSPort rpc websocket port
 	DefaultRPCWSPort = uint32(8546)
 )

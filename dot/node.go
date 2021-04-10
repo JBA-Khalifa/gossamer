@@ -18,21 +18,28 @@ package dot
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path"
+	"runtime/debug"
+	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/ChainSafe/chaindb"
+	gssmrmetrics "github.com/ChainSafe/gossamer/dot/metrics"
 	"github.com/ChainSafe/gossamer/dot/network"
 	"github.com/ChainSafe/gossamer/dot/state"
+	"github.com/ChainSafe/gossamer/dot/telemetry"
 	"github.com/ChainSafe/gossamer/dot/types"
 	"github.com/ChainSafe/gossamer/lib/genesis"
 	"github.com/ChainSafe/gossamer/lib/keystore"
 	"github.com/ChainSafe/gossamer/lib/services"
-
-	"github.com/ChainSafe/chaindb"
 	log "github.com/ChainSafe/log15"
+	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/metrics/prometheus"
 )
 
 var logger = log.New("pkg", "dot")
@@ -50,17 +57,25 @@ type Node struct {
 func InitNode(cfg *Config) error {
 	setupLogger(cfg)
 	logger.Info(
-		"initializing node...",
+		"🕸️ initializing node...",
 		"name", cfg.Global.Name,
 		"id", cfg.Global.ID,
 		"basepath", cfg.Global.BasePath,
-		"genesis-raw", cfg.Init.GenesisRaw,
+		"genesis", cfg.Init.Genesis,
 	)
 
 	// create genesis from configuration file
-	gen, err := genesis.NewGenesisFromJSONRaw(cfg.Init.GenesisRaw)
+	gen, err := genesis.NewGenesisFromJSONRaw(cfg.Init.Genesis)
 	if err != nil {
 		return fmt.Errorf("failed to load genesis from file: %w", err)
+	}
+
+	if !gen.IsRaw() {
+		// genesis is human-readable, convert to raw
+		err = gen.ToRaw()
+		if err != nil {
+			return fmt.Errorf("failed to convert genesis-spec to raw genesis: %w", err)
+		}
 	}
 
 	// create trie from genesis
@@ -94,7 +109,7 @@ func InitNode(cfg *Config) error {
 		"name", cfg.Global.Name,
 		"id", cfg.Global.ID,
 		"basepath", cfg.Global.BasePath,
-		"genesis-raw", cfg.Init.GenesisRaw,
+		"genesis", cfg.Init.Genesis,
 		"block", header.Number,
 		"genesis hash", header.Hash(),
 	)
@@ -114,20 +129,6 @@ func NodeInitialized(basepath string, expected bool) bool {
 				"node has not been initialized",
 				"basepath", basepath,
 				"error", "failed to locate KEYREGISTRY file in data directory",
-			)
-		}
-		return false
-	}
-
-	// check if manifest exists
-	manifest := path.Join(basepath, "MANIFEST")
-	_, err = os.Stat(manifest)
-	if os.IsNotExist(err) {
-		if expected {
-			logger.Warn(
-				"node has not been initialized",
-				"basepath", basepath,
-				"error", "failed to locate MANIFEST file in data directory",
 			)
 		}
 		return false
@@ -168,6 +169,13 @@ func NodeInitialized(basepath string, expected bool) bool {
 
 // NewNode creates a new dot node from a dot node configuration
 func NewNode(cfg *Config, ks *keystore.GlobalKeystore, stopFunc func()) (*Node, error) {
+	// set garbage collection percent to 10%
+	// can be overwritten by setting the GOGC env veriable, which defaults to 100
+	prev := debug.SetGCPercent(10)
+	if prev != 100 {
+		debug.SetGCPercent(prev)
+	}
+
 	setupLogger(cfg)
 
 	// if authority node, should have at least 1 key in keystore
@@ -178,7 +186,7 @@ func NewNode(cfg *Config, ks *keystore.GlobalKeystore, stopFunc func()) (*Node, 
 	// Node Services
 
 	logger.Info(
-		"initializing node services...",
+		"🕸️ initializing node services...",
 		"name", cfg.Global.Name,
 		"id", cfg.Global.ID,
 		"basepath", cfg.Global.BasePath,
@@ -211,7 +219,7 @@ func NewNode(cfg *Config, ks *keystore.GlobalKeystore, stopFunc func()) (*Node, 
 	}
 
 	// create runtime
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), networkSrvc)
+	rt, err := createRuntime(cfg, stateSrvc, ks, networkSrvc)
 	if err != nil {
 		return nil, err
 	}
@@ -246,6 +254,7 @@ func NewNode(cfg *Config, ks *keystore.GlobalKeystore, stopFunc func()) (*Node, 
 		return nil, err
 	}
 	nodeSrvcs = append(nodeSrvcs, fg)
+	dh.SetFinalityGadget(fg) // TODO: this should be cleaned up
 
 	// Core Service
 
@@ -295,12 +304,59 @@ func NewNode(cfg *Config, ks *keystore.GlobalKeystore, stopFunc func()) (*Node, 
 		node.Services.RegisterService(srvc)
 	}
 
+	if cfg.Global.PublishMetrics {
+		publishMetrics(cfg)
+	}
+
+	gd, err := stateSrvc.Storage.GetGenesisData()
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.Global.NoTelemetry {
+		return node, nil
+	}
+
+	telemetry.GetInstance().AddConnections(gd.TelemetryEndpoints)
+	data := &telemetry.ConnectionData{
+		Authority:     cfg.Core.GrandpaAuthority,
+		Chain:         sysSrvc.ChainName(),
+		GenesisHash:   stateSrvc.Block.GenesisHash().String(),
+		SystemName:    sysSrvc.SystemName(),
+		NodeName:      cfg.Global.Name,
+		SystemVersion: sysSrvc.SystemVersion(),
+		NetworkID:     networkSrvc.NetworkState().PeerID,
+		StartTime:     strconv.FormatInt(time.Now().UnixNano(), 10),
+	}
+	telemetry.GetInstance().SendConnection(data)
+
 	return node, nil
+}
+
+func publishMetrics(cfg *Config) {
+	address := fmt.Sprintf("%s:%d", cfg.RPC.Host, cfg.Global.MetricsPort)
+	log.Info("Enabling stand-alone metrics HTTP endpoint", "address", address)
+	setupMetricsServer(address)
+
+	// Start system runtime metrics collection
+	go gssmrmetrics.CollectProcessMetrics()
+}
+
+// setupMetricsServer starts a dedicated metrics server at the given address.
+func setupMetricsServer(address string) {
+	m := http.NewServeMux()
+	m.Handle("/metrics", prometheus.Handler(metrics.DefaultRegistry))
+	log.Info("Starting metrics server", "addr", fmt.Sprintf("http://%s/metrics", address))
+	go func() {
+		if err := http.ListenAndServe(address, m); err != nil {
+			log.Error("Failure in running metrics server", "err", err)
+		}
+	}()
 }
 
 // Start starts all dot node services
 func (n *Node) Start() error {
-	logger.Info("starting node services...")
+	logger.Info("🕸️ starting node services...")
 
 	// start all dot node services
 	n.Services.StartAll()

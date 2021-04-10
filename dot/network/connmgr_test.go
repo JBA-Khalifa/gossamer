@@ -17,8 +17,11 @@
 package network
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/ChainSafe/gossamer/lib/utils"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -26,9 +29,9 @@ import (
 func TestMaxPeers(t *testing.T) {
 	max := 3
 	nodes := make([]*Service, max+2)
-
 	for i := range nodes {
 		config := &Config{
+			BasePath:    utils.NewTestBasePath(t, fmt.Sprintf("node%d", i)),
 			Port:        7000 + uint32(i),
 			RandSeed:    1 + int64(i),
 			NoBootstrap: true,
@@ -36,12 +39,11 @@ func TestMaxPeers(t *testing.T) {
 			MaxPeers:    max,
 		}
 		node := createTestService(t, config)
-		defer node.Stop()
 		nodes[i] = node
 	}
 
 	addrs := nodes[0].host.multiaddrs()
-	ainfo, err := peer.AddrInfoFromP2pAddr(addrs[1])
+	ainfo, err := peer.AddrInfoFromP2pAddr(addrs[0])
 	require.NoError(t, err)
 
 	for i, n := range nodes {
@@ -51,6 +53,9 @@ func TestMaxPeers(t *testing.T) {
 		}
 
 		err = n.host.connect(*ainfo)
+		if err != nil {
+			err = n.host.connect(*ainfo)
+		}
 		require.NoError(t, err, i)
 	}
 
@@ -60,7 +65,6 @@ func TestMaxPeers(t *testing.T) {
 
 func TestProtectUnprotectPeer(t *testing.T) {
 	cm := newConnManager(1, 4)
-	require.Zero(t, len(cm.protectedPeerMap))
 
 	p1 := peer.ID("a")
 	p2 := peer.ID("b")
@@ -81,4 +85,35 @@ func TestProtectUnprotectPeer(t *testing.T) {
 
 	unprot = cm.unprotectedPeers([]peer.ID{p1, p2, p3, p4})
 	require.Equal(t, unprot, []peer.ID{p1, p2, p3, p4})
+}
+
+func TestPersistentPeers(t *testing.T) {
+	configA := &Config{
+		BasePath:    utils.NewTestBasePath(t, "node-a"),
+		Port:        7000,
+		RandSeed:    1,
+		NoBootstrap: true,
+		NoMDNS:      true,
+	}
+	nodeA := createTestService(t, configA)
+
+	addrs := nodeA.host.multiaddrs()
+	configB := &Config{
+		BasePath:        utils.NewTestBasePath(t, "node-b"),
+		Port:            7001,
+		RandSeed:        2,
+		NoMDNS:          true,
+		PersistentPeers: []string{addrs[0].String()},
+	}
+	nodeB := createTestService(t, configB)
+
+	// B should have connected to A during bootstrap
+	conns := nodeB.host.h.Network().ConnsToPeer(nodeA.host.id())
+	require.NotEqual(t, 0, len(conns))
+
+	// if A disconnects from B, B should reconnect
+	nodeA.host.h.Network().ClosePeer(nodeA.host.id())
+	time.Sleep(time.Millisecond * 500)
+	conns = nodeB.host.h.Network().ConnsToPeer(nodeA.host.id())
+	require.NotEqual(t, 0, len(conns))
 }

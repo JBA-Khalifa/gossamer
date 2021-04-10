@@ -17,10 +17,14 @@
 package ed25519
 
 import (
+	ed25519 "crypto/ed25519"
 	"reflect"
 	"testing"
 
-	ed25519 "crypto/ed25519"
+	"github.com/ChainSafe/gossamer/lib/common"
+
+	bip39 "github.com/cosmos/go-bip39"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSignAndVerify(t *testing.T) {
@@ -87,4 +91,24 @@ func TestEncodeAndDecodePublicKey(t *testing.T) {
 	if !reflect.DeepEqual(res, kp.Public()) {
 		t.Fatalf("Fail: got %x expected %x", res, kp.Public())
 	}
+}
+
+func TestNewKeypairFromMnenomic(t *testing.T) {
+	entropy, err := bip39.NewEntropy(128)
+	require.NoError(t, err)
+
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	require.NoError(t, err)
+
+	_, err = NewKeypairFromMnenomic(mnemonic, "")
+	require.NoError(t, err)
+}
+
+func TestNewKeypairFromMnenomic_Again(t *testing.T) {
+	mnemonic := "twist sausage october vivid neglect swear crumble hawk beauty fabric egg fragile"
+	kp, err := NewKeypairFromMnenomic(mnemonic, "")
+	require.NoError(t, err)
+
+	expectedPubkey := common.MustHexToBytes("0xf56d9231e7b7badd3f1e10ad15ef8aa08b70839723d0a2d10d7329f0ea2b8c61")
+	require.Equal(t, expectedPubkey, kp.Public().Encode())
 }

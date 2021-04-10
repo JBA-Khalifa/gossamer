@@ -54,13 +54,20 @@ func newInMemoryDB(path string) (chaindb.Database, error) {
 
 // createStateService creates the state service and initialize state database
 func createStateService(cfg *Config) (*state.Service, error) {
-	logger.Info("creating state service...")
+	logger.Debug("creating state service...")
 	stateSrvc := state.NewService(cfg.Global.BasePath, cfg.Log.StateLvl)
 
 	// start state service (initialize state database)
 	err := stateSrvc.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start state service: %s", err)
+	}
+
+	if cfg.State.Rewind != 0 {
+		err = stateSrvc.Rewind(int64(cfg.State.Rewind))
+		if err != nil {
+			return nil, fmt.Errorf("failed to rewind state: %w", err)
+		}
 	}
 
 	// load most recent state from database
@@ -78,7 +85,7 @@ func createStateService(cfg *Config) (*state.Service, error) {
 	return stateSrvc, nil
 }
 
-func createRuntime(cfg *Config, st *state.Service, ks *keystore.GenericKeystore, net *network.Service) (runtime.Instance, error) {
+func createRuntime(cfg *Config, st *state.Service, ks *keystore.GlobalKeystore, net *network.Service) (runtime.Instance, error) {
 	logger.Info(
 		"creating runtime...",
 		"interpreter", cfg.Core.WasmInterpreter,
@@ -117,6 +124,7 @@ func createRuntime(cfg *Config, st *state.Service, ks *keystore.GenericKeystore,
 		rtCfg.NodeStorage = ns
 		rtCfg.Network = net
 		rtCfg.Role = cfg.Core.Roles
+
 		// create runtime executor
 		rt, err = wasmer.NewInstance(code, rtCfg)
 		if err != nil {
@@ -207,7 +215,7 @@ func createBABEService(cfg *Config, rt runtime.Instance, st *state.Service, ks k
 
 // createCoreService creates the core service from the provided core configuration
 func createCoreService(cfg *Config, bp core.BlockProducer, fg core.FinalityGadget, verifier *babe.VerificationManager, rt runtime.Instance, ks *keystore.GlobalKeystore, stateSrvc *state.Service, net *network.Service) (*core.Service, error) {
-	logger.Info(
+	logger.Debug(
 		"creating core service...",
 		"authority", cfg.Core.Roles == types.AuthorityRole,
 	)
@@ -243,7 +251,7 @@ func createCoreService(cfg *Config, bp core.BlockProducer, fg core.FinalityGadge
 
 // createNetworkService creates a network service from the command configuration and genesis data
 func createNetworkService(cfg *Config, stateSrvc *state.Service) (*network.Service, error) {
-	logger.Info(
+	logger.Debug(
 		"creating network service...",
 		"roles", cfg.Core.Roles,
 		"port", cfg.Network.Port,
@@ -255,17 +263,19 @@ func createNetworkService(cfg *Config, stateSrvc *state.Service) (*network.Servi
 
 	// network service configuation
 	networkConfig := network.Config{
-		LogLvl:      cfg.Log.NetworkLvl,
-		BlockState:  stateSrvc.Block,
-		BasePath:    cfg.Global.BasePath,
-		Roles:       cfg.Core.Roles,
-		Port:        cfg.Network.Port,
-		Bootnodes:   cfg.Network.Bootnodes,
-		ProtocolID:  cfg.Network.ProtocolID,
-		NoBootstrap: cfg.Network.NoBootstrap,
-		NoMDNS:      cfg.Network.NoMDNS,
-		MinPeers:    cfg.Network.MinPeers,
-		MaxPeers:    cfg.Network.MaxPeers,
+		LogLvl:          cfg.Log.NetworkLvl,
+		BlockState:      stateSrvc.Block,
+		BasePath:        cfg.Global.BasePath,
+		Roles:           cfg.Core.Roles,
+		Port:            cfg.Network.Port,
+		Bootnodes:       cfg.Network.Bootnodes,
+		ProtocolID:      cfg.Network.ProtocolID,
+		NoBootstrap:     cfg.Network.NoBootstrap,
+		NoMDNS:          cfg.Network.NoMDNS,
+		MinPeers:        cfg.Network.MinPeers,
+		MaxPeers:        cfg.Network.MaxPeers,
+		PublishMetrics:  cfg.Global.PublishMetrics,
+		PersistentPeers: cfg.Network.PersistentPeers,
 	}
 
 	networkSrvc, err := network.NewService(&networkConfig)

@@ -17,9 +17,11 @@
 package storage
 
 import (
-	"fmt"
+	"bytes"
+	"sort"
 	"testing"
 
+	"github.com/ChainSafe/gossamer/lib/common"
 	"github.com/ChainSafe/gossamer/lib/trie"
 	"github.com/stretchr/testify/require"
 )
@@ -43,13 +45,11 @@ var testCases = []string{
 func TestTrieState_SetGet(t *testing.T) {
 	testFunc := func(ts *TrieState) {
 		for _, tc := range testCases {
-			err := ts.Set([]byte(tc), []byte(tc))
-			require.NoError(t, err)
+			ts.Set([]byte(tc), []byte(tc))
 		}
 
 		for _, tc := range testCases {
-			res, err := ts.Get([]byte(tc))
-			require.NoError(t, err, fmt.Sprintf("failed to get key %s", tc))
+			res := ts.Get([]byte(tc))
 			require.Equal(t, []byte(tc), res)
 		}
 	}
@@ -61,15 +61,11 @@ func TestTrieState_SetGet(t *testing.T) {
 func TestTrieState_Delete(t *testing.T) {
 	testFunc := func(ts *TrieState) {
 		for _, tc := range testCases {
-			err := ts.Set([]byte(tc), []byte(tc))
-			require.NoError(t, err)
+			ts.Set([]byte(tc), []byte(tc))
 		}
 
-		err := ts.Delete([]byte(testCases[0]))
-		require.NoError(t, err)
-
-		has, err := ts.Has([]byte(testCases[0]))
-		require.NoError(t, err)
+		ts.Delete([]byte(testCases[0]))
+		has := ts.Has([]byte(testCases[0]))
 		require.False(t, has)
 	}
 
@@ -80,8 +76,7 @@ func TestTrieState_Delete(t *testing.T) {
 func TestTrieState_Root(t *testing.T) {
 	testFunc := func(ts *TrieState) {
 		for _, tc := range testCases {
-			err := ts.Set([]byte(tc), []byte(tc))
-			require.NoError(t, err)
+			ts.Set([]byte(tc), []byte(tc))
 		}
 
 		expected := ts.MustRoot()
@@ -102,15 +97,13 @@ func TestTrieState_ClearPrefix(t *testing.T) {
 	}
 
 	for i, key := range keys {
-		err := ts.Set([]byte(key), []byte{byte(i)})
-		require.NoError(t, err)
+		ts.Set([]byte(key), []byte{byte(i)})
 	}
 
 	ts.ClearPrefix([]byte("noo"))
 
 	for i, key := range keys {
-		val, err := ts.Get([]byte(key))
-		require.NoError(t, err)
+		val := ts.Get([]byte(key))
 		if i < 2 {
 			require.Nil(t, val)
 		} else {
@@ -150,4 +143,57 @@ func TestTrieState_ClearPrefixInChild(t *testing.T) {
 			require.NotNil(t, val)
 		}
 	}
+}
+
+func TestTrieState_NextKey(t *testing.T) {
+	ts := newTestTrieState(t)
+
+	for _, tc := range testCases {
+		ts.Set([]byte(tc), []byte(tc))
+	}
+
+	sort.Slice(testCases, func(i, j int) bool {
+		return bytes.Compare([]byte(testCases[i]), []byte(testCases[j])) == -1
+	})
+
+	for i, tc := range testCases {
+		next := ts.NextKey([]byte(tc))
+		if i == len(testCases)-1 {
+			require.Nil(t, next)
+		} else {
+			require.Equal(t, []byte(testCases[i+1]), next, common.BytesToHex([]byte(tc)))
+		}
+	}
+}
+
+func TestTrieState_CommitStorageTransaction(t *testing.T) {
+	ts := newTestTrieState(t)
+
+	for _, tc := range testCases {
+		ts.Set([]byte(tc), []byte(tc))
+	}
+
+	ts.BeginStorageTransaction()
+	testValue := []byte("noot")
+	ts.Set([]byte(testCases[0]), testValue)
+	ts.CommitStorageTransaction()
+
+	val := ts.Get([]byte(testCases[0]))
+	require.Equal(t, testValue, val)
+}
+
+func TestTrieState_RollbackStorageTransaction(t *testing.T) {
+	ts := newTestTrieState(t)
+
+	for _, tc := range testCases {
+		ts.Set([]byte(tc), []byte(tc))
+	}
+
+	ts.BeginStorageTransaction()
+	testValue := []byte("noot")
+	ts.Set([]byte(testCases[0]), testValue)
+	ts.RollbackStorageTransaction()
+
+	val := ts.Get([]byte(testCases[0]))
+	require.Equal(t, []byte(testCases[0]), val)
 }

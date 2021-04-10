@@ -31,24 +31,29 @@ import (
 
 // ConnManager implements connmgr.ConnManager
 type ConnManager struct {
-	min, max int
+	sync.Mutex
+	host              *host
+	min, max          int
+	disconnectHandler func(peer.ID)
 
 	// closeHandlerMap contains close handler corresponding to a protocol.
 	closeHandlerMap map[protocol.ID]func(peerID peer.ID)
 
-	protectedPeerMapMu sync.RWMutex
-	// protectedPeerMap contains a list of peers that are protected from pruning
+	// protectedPeers contains a list of peers that are protected from pruning
 	// when we reach the maximum numbers of peers.
-	protectedPeerMap map[peer.ID]struct{}
-	sync.Mutex
+	protectedPeers *sync.Map // map[peer.ID]struct{}
+
+	// persistentPeers contains peers we should remain connected to.
+	persistentPeers *sync.Map // map[peer.ID]struct{}
 }
 
 func newConnManager(min, max int) *ConnManager {
 	return &ConnManager{
-		min:              min,
-		max:              max,
-		closeHandlerMap:  make(map[protocol.ID]func(peerID peer.ID)),
-		protectedPeerMap: make(map[peer.ID]struct{}),
+		min:             min,
+		max:             max,
+		closeHandlerMap: make(map[protocol.ID]func(peerID peer.ID)),
+		protectedPeers:  new(sync.Map),
+		persistentPeers: new(sync.Map),
 	}
 }
 
@@ -84,25 +89,15 @@ func (*ConnManager) TrimOpenConns(ctx context.Context) {}
 // Protect peer will add the given peer to the protectedPeerMap which will
 // protect the peer from pruning.
 func (cm *ConnManager) Protect(id peer.ID, tag string) {
-	cm.protectedPeerMapMu.Lock()
-	defer cm.protectedPeerMapMu.Unlock()
-
-	cm.protectedPeerMap[id] = struct{}{}
+	cm.protectedPeers.Store(id, struct{}{})
 }
 
 // Unprotect peer will remove the given peer from prune protection.
 // returns true if we have successfully removed the peer from the
 // protectedPeerMap. False otherwise.
 func (cm *ConnManager) Unprotect(id peer.ID, tag string) bool {
-	cm.protectedPeerMapMu.Lock()
-	defer cm.protectedPeerMapMu.Unlock()
-
-	_, ok := cm.protectedPeerMap[id]
-	if ok {
-		delete(cm.protectedPeerMap, id)
-		return true
-	}
-	return false
+	_, wasDeleted := cm.protectedPeers.LoadAndDelete(id)
+	return wasDeleted
 }
 
 // Close peer
@@ -110,10 +105,7 @@ func (*ConnManager) Close() error { return nil }
 
 // IsProtected returns whether the given peer is protected from pruning or not.
 func (cm *ConnManager) IsProtected(id peer.ID, tag string) (protected bool) {
-	cm.protectedPeerMapMu.RLock()
-	defer cm.protectedPeerMapMu.RUnlock()
-
-	_, ok := cm.protectedPeerMap[id]
+	_, ok := cm.protectedPeers.Load(id)
 	return ok
 }
 
@@ -139,7 +131,7 @@ func (cm *ConnManager) ListenClose(n network.Network, addr ma.Multiaddr) {
 func (cm *ConnManager) unprotectedPeers(peers []peer.ID) []peer.ID {
 	unprot := []peer.ID{}
 	for _, id := range peers {
-		if !cm.IsProtected(id, "") {
+		if !cm.IsProtected(id, "") && !cm.isPersistent(id) {
 			unprot = append(unprot, id)
 		}
 	}
@@ -158,6 +150,7 @@ func (cm *ConnManager) Connected(n network.Network, c network.Conn) {
 	cm.Lock()
 	defer cm.Unlock()
 
+	// TODO: this should be updated to disconnect from (total_peers - maximum) peers, instead of just one peer
 	if len(n.Peers()) > cm.max {
 		unprotPeers := cm.unprotectedPeers(n.Peers())
 		if len(unprotPeers) == 0 {
@@ -170,7 +163,7 @@ func (cm *ConnManager) Connected(n network.Network, c network.Conn) {
 		logger.Trace("Over max peer count, disconnecting from random unprotected peer", "peer", unprotPeers[i])
 		err := n.ClosePeer(unprotPeers[i])
 		if err != nil {
-			logger.Debug("failed to close connection to peer", "peer", unprotPeers[i], "num peers", len(n.Peers()))
+			logger.Trace("failed to close connection to peer", "peer", unprotPeers[i], "num peers", len(n.Peers()))
 		}
 	}
 }
@@ -183,7 +176,31 @@ func (cm *ConnManager) Disconnected(n network.Network, c network.Conn) {
 		"peer", c.RemotePeer(),
 	)
 
+	cm.Unprotect(c.RemotePeer(), "")
+	if cm.disconnectHandler != nil {
+		cm.disconnectHandler(c.RemotePeer())
+	}
+
+	if !cm.isPersistent(c.RemotePeer()) {
+		return
+	}
+
+	addrs := cm.host.h.Peerstore().Addrs(c.RemotePeer())
+	info := peer.AddrInfo{
+		ID:    c.RemotePeer(),
+		Addrs: addrs,
+	}
+
+	err := cm.host.connect(info)
+	if err != nil {
+		logger.Warn("failed to reconnect to persistent peer", "peer", c.RemotePeer(), "error", err)
+	}
+
 	// TODO: if number of peers falls below the min desired peer count, we should try to connect to previously discovered peers
+}
+
+func (cm *ConnManager) registerDisconnectHandler(cb func(peer.ID)) {
+	cm.disconnectHandler = cb
 }
 
 // OpenedStream is called when a stream opened
@@ -196,8 +213,7 @@ func (cm *ConnManager) OpenedStream(n network.Network, s network.Stream) {
 	)
 }
 
-// RegisterCloseHandler is called to register additional close stream handler
-func (cm *ConnManager) RegisterCloseHandler(protocolID protocol.ID, cb func(id peer.ID)) {
+func (cm *ConnManager) registerCloseHandler(protocolID protocol.ID, cb func(id peer.ID)) {
 	cm.closeHandlerMap[protocolID] = cb
 }
 
@@ -215,4 +231,9 @@ func (cm *ConnManager) ClosedStream(n network.Network, s network.Stream) {
 	if closeCB, ok := cm.closeHandlerMap[s.Protocol()]; ok {
 		closeCB(s.Conn().RemotePeer())
 	}
+}
+
+func (cm *ConnManager) isPersistent(p peer.ID) bool {
+	_, ok := cm.persistentPeers.Load(p)
+	return ok
 }

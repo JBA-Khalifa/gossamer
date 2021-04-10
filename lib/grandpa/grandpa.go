@@ -115,7 +115,7 @@ func NewService(cfg *Config) (*Service, error) {
 		pub = cfg.Keypair.Public().Hex()
 	}
 
-	logger.Info("creating service", "authority", cfg.Authority, "key", pub, "voter set", Voters(cfg.Voters))
+	logger.Debug("creating service", "authority", cfg.Authority, "key", pub, "voter set", Voters(cfg.Voters))
 
 	// get latest finalized header
 	head, err := cfg.BlockState.GetFinalizedHeader(0, 0)
@@ -515,7 +515,6 @@ func (s *Service) playGrandpaRound() error {
 		// receive messages until current round is completable and previous round is finalizable
 		// and the last finalized block is greater than the best final candidate from the previous round
 		s.receiveMessages(func() bool {
-			//return false
 			if s.paused.Load().(bool) {
 				return true
 			}

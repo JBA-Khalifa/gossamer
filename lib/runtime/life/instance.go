@@ -89,6 +89,7 @@ func NewInstance(code []byte, cfg *Config) (runtime.Instance, error) {
 		memory: instance.Memory,
 	}
 
+	// TODO: use __heap_base
 	allocator := runtime.NewAllocator(memory, 0)
 
 	runtimeCtx := &runtime.Context{
@@ -109,8 +110,8 @@ func NewInstance(code []byte, cfg *Config) (runtime.Instance, error) {
 	}
 
 	ctx = runtimeCtx
-	inst.version, err = inst.Version()
-	return inst, err
+	inst.version, _ = inst.Version()
+	return inst, nil
 }
 
 // Memory is a thin wrapper around life's memory to support
@@ -120,13 +121,24 @@ type Memory struct {
 }
 
 // Data returns the memory's data
-func (m Memory) Data() []byte {
+func (m *Memory) Data() []byte {
 	return m.memory
 }
 
 // Length returns the memory's length
-func (m Memory) Length() uint32 {
+func (m *Memory) Length() uint32 {
 	return uint32(len(m.memory))
+}
+
+// Grow ...
+func (m *Memory) Grow(numPages uint32) error {
+	m.memory = append(m.memory, make([]byte, runtime.PageSize*numPages)...)
+	return nil
+}
+
+// UpdateRuntimeCode ...
+func (in *Instance) UpdateRuntimeCode(_ []byte) error {
+	return errors.New("unimplemented")
 }
 
 // SetContextStorage sets the runtime's storage. It should be set before calls to the below functions.

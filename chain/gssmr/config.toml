@@ -1,6 +1,7 @@
 [global]
 basepath = "~/.gossamer/gssmr"
 log = "info"
+metrics-port = 9876
 
 [log]
 core = ""
@@ -13,7 +14,7 @@ grandpa = ""
 sync = ""
 
 [init]
-genesis-raw = "./chain/gssmr/genesis-raw.json"
+genesis = "./chain/gssmr/genesis.json"
 
 [account]
 key = ""
@@ -33,5 +34,5 @@ nomdns = false
 enabled = false
 port = 8545
 host = "localhost"
-modules = ["system", "author", "chain", "state", "rpc"]
+modules = ["system", "author", "chain", "state", "rpc", "grandpa"]
 ws-port = 8546

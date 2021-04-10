@@ -44,7 +44,7 @@ $ git remote -v (you should see myrepo and gossamer in the list of remotes)
 
 To start, check out our open issues. We recommend starting with an [issue labeled `Good First Issue`](https://github.com/ChainSafe/gossamer/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+First+Issue%22). Leave a comment to let us know that you would like to work on it. 
 
-Another option is to improve gossamer where you see fit based on your evaluation of our code. In order to best faciliate collabration, please create an issue before you start working on it.
+Another option is to improve gossamer where you see fit based on your evaluation of our code. In order to best faciliate collaboration, please create an issue before you start working on it.
 
 **6. Make improvements to the code.**
 
@@ -118,7 +118,7 @@ Anyone can become a part-time contributor and help out on gossamer. Contribution
 -   Follow up on open PRs
     -   Have an estimated timeframe to completion and let the core contributors know if a PR will take longer than expected
 
-We do not expect all part-time contributors to be experts on all the latest Polkadot documentation, but all contributors should at least be familiarized with the fundamentals of the [Polkadot Runtime Specification](https://research.web3.foundation/en/latest/_static/pdfview/viewer.html?file=../pdf/polkadot_re_spec.pdf).
+We do not expect all part-time contributors to be experts on all the latest Polkadot documentation, but all contributors should at least be familiarized with the fundamentals of the [Polkadot Runtime Specification](https://research.web3.foundation/en/latest/polkadot/specifications/runtime.html).
 
 ### Core Contributors
 

@@ -19,7 +19,7 @@ type testBranch struct {
 }
 
 func createTestBlockTree(header *types.Header, depth int, db chaindb.Database) (*BlockTree, []testBranch) {
-	bt := NewBlockTreeFromGenesis(header, db)
+	bt := NewBlockTreeFromRoot(header, db)
 	previousHash := header.Hash()
 
 	// branch tree randomly
@@ -28,16 +28,13 @@ func createTestBlockTree(header *types.Header, depth int, db chaindb.Database) (
 
 	// create base tree
 	for i := 1; i <= depth; i++ {
-		block := &types.Block{
-			Header: &types.Header{
-				ParentHash: previousHash,
-				Number:     big.NewInt(int64(i)),
-			},
-			Body: &types.Body{},
+		header := &types.Header{
+			ParentHash: previousHash,
+			Number:     big.NewInt(int64(i)),
 		}
 
-		hash := block.Header.Hash()
-		bt.AddBlock(block, 0)
+		hash := header.Hash()
+		bt.AddBlock(header, 0)
 		previousHash = hash
 
 		isBranch := r.Intn(2)
@@ -54,17 +51,14 @@ func createTestBlockTree(header *types.Header, depth int, db chaindb.Database) (
 		previousHash = branch.hash
 
 		for i := int(branch.depth.Uint64()); i <= depth; i++ {
-			block := &types.Block{
-				Header: &types.Header{
-					ParentHash: previousHash,
-					Number:     big.NewInt(int64(i)),
-					Digest:     types.Digest{newMockDigestItem(rand.Intn(256))},
-				},
-				Body: &types.Body{},
+			header := &types.Header{
+				ParentHash: previousHash,
+				Number:     big.NewInt(int64(i)),
+				Digest:     types.Digest{newMockDigestItem(rand.Intn(256))},
 			}
 
-			hash := block.Header.Hash()
-			bt.AddBlock(block, 0)
+			hash := header.Hash()
+			bt.AddBlock(header, 0)
 			previousHash = hash
 		}
 	}
@@ -77,15 +71,11 @@ func TestStoreBlockTree(t *testing.T) {
 	bt, _ := createTestBlockTree(testHeader, 10, db)
 
 	err := bt.Store()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	resBt := NewBlockTreeFromGenesis(testHeader, db)
+	resBt := NewBlockTreeFromRoot(testHeader, db)
 	err = resBt.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if !reflect.DeepEqual(bt.head, resBt.head) {
 		t.Fatalf("Fail: got %v expected %v", resBt, bt)

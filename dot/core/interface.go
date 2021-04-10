@@ -22,7 +22,6 @@ import (
 	"github.com/ChainSafe/gossamer/dot/network"
 	"github.com/ChainSafe/gossamer/dot/types"
 	"github.com/ChainSafe/gossamer/lib/common"
-	"github.com/ChainSafe/gossamer/lib/runtime"
 	rtstorage "github.com/ChainSafe/gossamer/lib/runtime/storage"
 	"github.com/ChainSafe/gossamer/lib/services"
 	"github.com/ChainSafe/gossamer/lib/transaction"
@@ -40,8 +39,6 @@ type BlockState interface {
 	GetBlockByHash(common.Hash) (*types.Block, error)
 	GenesisHash() common.Hash
 	GetSlotForBlock(common.Hash) (uint64, error)
-	HighestBlockHash() common.Hash
-	HighestBlockNumber() *big.Int
 	GetFinalizedHeader(uint64, uint64) (*types.Header, error)
 	GetFinalizedHash(uint64, uint64) (common.Hash, error)
 	SetFinalizedHash(common.Hash, uint64, uint64) error
@@ -82,7 +79,6 @@ type FinalityGadget interface {
 // BlockProducer is the interface that a block production service must implement
 type BlockProducer interface {
 	GetBlockChannel() <-chan types.Block
-	SetRuntime(runtime.Instance)
 	SetOnDisabled(authorityIndex uint32)
 }
 

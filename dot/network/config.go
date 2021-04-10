@@ -85,8 +85,14 @@ type Config struct {
 	MinPeers int
 	MaxPeers int
 
+	// PersistentPeers is a list of multiaddrs which the node should remain connected to
+	PersistentPeers []string
+
 	// privateKey the private key for the network p2p identity
 	privateKey crypto.PrivKey
+
+	// PublishMetrics enables collection of network metrics
+	PublishMetrics bool
 }
 
 // build checks the configuration, sets up the private key for the network service,

@@ -16,7 +16,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"sync"
@@ -27,7 +26,6 @@ import (
 	"github.com/ChainSafe/gossamer/lib/crypto"
 	"github.com/ChainSafe/gossamer/lib/keystore"
 	"github.com/ChainSafe/gossamer/lib/runtime"
-	"github.com/ChainSafe/gossamer/lib/runtime/wasmer"
 	"github.com/ChainSafe/gossamer/lib/services"
 	"github.com/ChainSafe/gossamer/lib/transaction"
 
@@ -224,7 +222,7 @@ func (s *Service) StorageRoot() (common.Hash, error) {
 
 func (s *Service) handleBlocks(ctx context.Context) {
 	for {
-		prev := s.blockState.BestBlockHash()
+		//prev := s.blockState.BestBlockHash()
 
 		select {
 		case block := <-s.blockAddCh:
@@ -236,16 +234,13 @@ func (s *Service) handleBlocks(ctx context.Context) {
 				logger.Warn("failed to handle epoch for block", "block", block.Header.Hash(), "error", err)
 			}
 
-			if err := s.handleChainReorg(prev, block.Header.Hash()); err != nil {
-				logger.Warn("failed to re-add transactions to chain upon re-org", "error", err)
-			}
+			// TODO: add inherent check
+			// if err := s.handleChainReorg(prev, block.Header.Hash()); err != nil {
+			// 	logger.Warn("failed to re-add transactions to chain upon re-org", "error", err)
+			// }
 
 			if err := s.maintainTransactionPool(block); err != nil {
 				logger.Warn("failed to maintain transaction pool", "error", err)
-			}
-
-			if err := s.handleRuntimeChanges(block.Header); err != nil {
-				logger.Warn("failed to handle runtime change for block", "block", block.Header.Hash(), "error", err)
 			}
 		case <-ctx.Done():
 			return
@@ -314,6 +309,7 @@ func (s *Service) handleReceivedBlock(block *types.Block) (err error) {
 		StateRoot:      block.Header.StateRoot,
 		ExtrinsicsRoot: block.Header.ExtrinsicsRoot,
 		Digest:         block.Header.Digest,
+		BestBlock:      true,
 	}
 
 	if s.net == nil {
@@ -321,61 +317,6 @@ func (s *Service) handleReceivedBlock(block *types.Block) (err error) {
 	}
 
 	s.net.SendMessage(msg)
-	return nil
-}
-
-// handleRuntimeChanges checks if changes to the runtime code have occurred; if so, load the new runtime
-// It also updates the BABE service and block verifier with the new runtime
-func (s *Service) handleRuntimeChanges(_ *types.Header) error {
-	sr, err := s.blockState.BestBlockStateRoot()
-	if err != nil {
-		return err
-	}
-
-	currentCodeHash, err := s.storageState.LoadCodeHash(&sr)
-	if err != nil {
-		return err
-	}
-
-	if !bytes.Equal(currentCodeHash[:], s.codeHash[:]) {
-		logger.Debug("detected runtime code change", "block", s.blockState.BestBlockHash(), "previous code hash", s.codeHash, "new code hash", currentCodeHash)
-		code, err := s.storageState.LoadCode(&sr)
-		if err != nil {
-			return err
-		}
-
-		if len(code) == 0 {
-			return ErrEmptyRuntimeCode
-		}
-
-		s.rt.Stop()
-
-		ts, err := s.storageState.TrieState(&sr)
-		if err != nil {
-			return err
-		}
-
-		cfg := &wasmer.Config{
-			Imports: wasmer.ImportsNodeRuntime,
-		}
-		cfg.Storage = ts
-		cfg.Keystore = s.keys.Acco.(*keystore.GenericKeystore)
-		cfg.LogLvl = -1
-		cfg.NodeStorage = s.rt.NodeStorage()
-		cfg.Network = s.rt.NetworkService()
-
-		s.rt, err = wasmer.NewInstance(code, cfg)
-		if err != nil {
-			return err
-		}
-
-		if s.isBlockProducer {
-			s.blockProducer.SetRuntime(s.rt)
-		}
-
-		// TODO: set syncer runtime
-	}
-
 	return nil
 }
 
@@ -411,12 +352,14 @@ func (s *Service) handleChainReorg(prev, curr common.Hash) error {
 			continue
 		}
 
+		// TODO: decode extrinsic and make sure it's not an inherent.
+		// currently we are attempting to re-add inherents, causing lots of "'Bad input data provided to validate_transaction" errors.
 		for _, ext := range exts {
-			logger.Trace("validating transaction on re-org chain", "extrinsic", ext)
+			logger.Debug("validating transaction on re-org chain", "extrinsic", ext)
 
 			txv, err := s.rt.ValidateTransaction(ext)
 			if err != nil {
-				logger.Trace("failed to validate transaction", "extrinsic", ext)
+				logger.Debug("failed to validate transaction", "extrinsic", ext)
 				continue
 			}
 
@@ -478,7 +421,7 @@ func (s *Service) InsertKey(kp crypto.Keypair) {
 
 // HasKey returns true if given hex encoded public key string is found in keystore, false otherwise, error if there
 //  are issues decoding string
-func (s *Service) HasKey(pubKeyStr string, keyType string) (bool, error) {
+func (s *Service) HasKey(pubKeyStr, keyType string) (bool, error) {
 	return keystore.HasKey(pubKeyStr, keyType, s.keys.Acco)
 }
 
@@ -514,6 +457,20 @@ func (s *Service) HandleSubmittedExtrinsic(ext types.Extrinsic) error {
 		return nil
 	}
 
+	// the transaction source is External
+	// validate the transaction
+	txv, err := s.rt.ValidateTransaction(append([]byte{byte(types.TxnExternal)}, ext...))
+	if err != nil {
+		return err
+	}
+
+	if s.isBlockProducer {
+		// add transaction to pool
+		vtx := transaction.NewValidTransaction(ext, txv)
+		s.transactionState.AddToPool(vtx)
+	}
+
+	// broadcast transaction
 	msg := &network.TransactionMessage{Extrinsics: []types.Extrinsic{ext}}
 	s.net.SendMessage(msg)
 	return nil

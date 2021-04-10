@@ -71,6 +71,8 @@ func TestHTTPServer_ServeHTTP(t *testing.T) {
 	err := s.Start()
 	require.Nil(t, err)
 
+	defer s.Stop()
+
 	time.Sleep(time.Second) // give server a second to start
 
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/"}
@@ -119,6 +121,18 @@ func (m *MockBlockAPI) RegisterFinalizedChannel(ch chan<- *types.Header) (byte, 
 	return 0, nil
 }
 func (m *MockBlockAPI) UnregisterFinalizedChannel(id byte) {}
+
+func (m *MockBlockAPI) GetJustification(hash common.Hash) ([]byte, error) {
+	return make([]byte, 10), nil
+}
+
+func (m *MockBlockAPI) HasJustification(hash common.Hash) (bool, error) {
+	return true, nil
+}
+
+func (m *MockBlockAPI) SubChain(start, end common.Hash) ([]common.Hash, error) {
+	return make([]common.Hash, 0), nil
+}
 
 type MockStorageAPI struct{}
 

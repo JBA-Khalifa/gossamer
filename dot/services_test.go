@@ -41,7 +41,7 @@ func TestCreateStateService(t *testing.T) {
 
 	defer utils.RemoveTestDir(t)
 
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.Nil(t, err)
@@ -67,7 +67,7 @@ func TestCreateCoreService(t *testing.T) {
 	cfg.Core.Roles = types.FullNodeRole
 	cfg.Core.BabeAuthority = false
 	cfg.Core.GrandpaAuthority = false
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestCreateCoreService(t *testing.T) {
 
 	networkSrvc := &network.Service{}
 
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), networkSrvc)
+	rt, err := createRuntime(cfg, stateSrvc, ks, networkSrvc)
 	require.NoError(t, err)
 
 	dh, err := createDigestHandler(stateSrvc, nil, nil)
@@ -107,7 +107,7 @@ func TestCreateBlockVerifier(t *testing.T) {
 
 	defer utils.RemoveTestDir(t)
 
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.Nil(t, err)
@@ -130,7 +130,7 @@ func TestCreateSyncService(t *testing.T) {
 
 	defer utils.RemoveTestDir(t)
 
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.Nil(t, err)
@@ -140,7 +140,7 @@ func TestCreateSyncService(t *testing.T) {
 
 	ks := keystore.NewGlobalKeystore()
 	require.NotNil(t, ks)
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), &network.Service{})
+	rt, err := createRuntime(cfg, stateSrvc, ks, &network.Service{})
 	require.NoError(t, err)
 
 	cfg.Core.BabeThresholdNumerator = 0
@@ -162,7 +162,7 @@ func TestCreateNetworkService(t *testing.T) {
 
 	defer utils.RemoveTestDir(t)
 
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.Nil(t, err)
@@ -191,7 +191,7 @@ func TestCreateRPCService(t *testing.T) {
 	cfg.Core.Roles = types.FullNodeRole
 	cfg.Core.BabeAuthority = false
 	cfg.Core.GrandpaAuthority = false
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.Nil(t, err)
@@ -205,7 +205,7 @@ func TestCreateRPCService(t *testing.T) {
 	ed25519Keyring, _ := keystore.NewEd25519Keyring()
 	ks.Gran.Insert(ed25519Keyring.Alice())
 
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), networkSrvc)
+	rt, err := createRuntime(cfg, stateSrvc, ks, networkSrvc)
 	require.NoError(t, err)
 
 	dh, err := createDigestHandler(stateSrvc, nil, nil)
@@ -235,7 +235,7 @@ func TestCreateBABEService(t *testing.T) {
 
 	// TODO: improve dot tests #687
 	cfg.Core.Roles = types.FullNodeRole
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.Nil(t, err)
@@ -248,7 +248,7 @@ func TestCreateBABEService(t *testing.T) {
 	require.Nil(t, err)
 	ks.Babe.Insert(kr.Alice())
 
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), &network.Service{})
+	rt, err := createRuntime(cfg, stateSrvc, ks, &network.Service{})
 	require.NoError(t, err)
 
 	bs, err := createBABEService(cfg, rt, stateSrvc, ks.Babe)
@@ -267,7 +267,7 @@ func TestCreateGrandpaService(t *testing.T) {
 
 	// TODO: improve dot tests #687
 	cfg.Core.Roles = types.AuthorityRole
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 
 	err := InitNode(cfg)
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestCreateGrandpaService(t *testing.T) {
 	require.NoError(t, err)
 	ks.Gran.Insert(kr.Alice())
 
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), &network.Service{})
+	rt, err := createRuntime(cfg, stateSrvc, ks, &network.Service{})
 	require.NoError(t, err)
 
 	dh, err := createDigestHandler(stateSrvc, nil, nil)
@@ -315,7 +315,7 @@ func TestNewWebSocketServer(t *testing.T) {
 	cfg.Core.Roles = types.FullNodeRole
 	cfg.Core.BabeAuthority = false
 	cfg.Core.GrandpaAuthority = false
-	cfg.Init.GenesisRaw = genFile.Name()
+	cfg.Init.Genesis = genFile.Name()
 	cfg.RPC.External = false
 	cfg.RPC.WS = true
 	cfg.RPC.WSExternal = false
@@ -332,7 +332,7 @@ func TestNewWebSocketServer(t *testing.T) {
 	ks := keystore.NewGlobalKeystore()
 	ed25519Keyring, _ := keystore.NewEd25519Keyring()
 	ks.Gran.Insert(ed25519Keyring.Alice())
-	rt, err := createRuntime(cfg, stateSrvc, ks.Acco.(*keystore.GenericKeystore), networkSrvc)
+	rt, err := createRuntime(cfg, stateSrvc, ks, networkSrvc)
 	require.NoError(t, err)
 
 	dh, err := createDigestHandler(stateSrvc, nil, nil)

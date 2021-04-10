@@ -79,10 +79,11 @@ func dotConfigToToml(dcfg *dot.Config) *ctoml.Config {
 	cfg := &ctoml.Config{}
 
 	cfg.Global = ctoml.GlobalConfig{
-		Name:     dcfg.Global.Name,
-		ID:       dcfg.Global.ID,
-		BasePath: dcfg.Global.BasePath,
-		LogLvl:   dcfg.Global.LogLvl.String(),
+		Name:        dcfg.Global.Name,
+		ID:          dcfg.Global.ID,
+		BasePath:    dcfg.Global.BasePath,
+		LogLvl:      dcfg.Global.LogLvl.String(),
+		MetricsPort: dcfg.Global.MetricsPort,
 	}
 
 	cfg.Log = ctoml.LogConfig{
@@ -97,7 +98,7 @@ func dotConfigToToml(dcfg *dot.Config) *ctoml.Config {
 	}
 
 	cfg.Init = ctoml.InitConfig{
-		GenesisRaw: dcfg.Init.GenesisRaw,
+		Genesis: dcfg.Init.Genesis,
 	}
 
 	cfg.Account = ctoml.AccountConfig{

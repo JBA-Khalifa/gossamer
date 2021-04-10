@@ -47,8 +47,8 @@ func (s *mockSyncer) CreateBlockResponse(msg *network.BlockRequestMessage) (*net
 	return nil, nil
 }
 
-func (s *mockSyncer) ProcessBlockData(_ []*types.BlockData) error {
-	return nil
+func (s *mockSyncer) ProcessBlockData(_ []*types.BlockData) (int, error) {
+	return 0, nil
 }
 
 func (s *mockSyncer) HandleBlockAnnounce(msg *network.BlockAnnounceMessage) error {
@@ -58,6 +58,12 @@ func (s *mockSyncer) HandleBlockAnnounce(msg *network.BlockAnnounceMessage) erro
 func (s *mockSyncer) HandleBlockAnnounceHandshake(num *big.Int) []*network.BlockRequestMessage {
 	return nil
 }
+
+func (s *mockSyncer) IsSynced() bool {
+	return false
+}
+
+func (s *mockSyncer) SetSyncing(_ bool) {}
 
 type mockBlockState struct{}
 
@@ -77,8 +83,12 @@ func (s *mockBlockState) HasBlockBody(_ common.Hash) (bool, error) {
 	return false, nil
 }
 
-func (s *mockSyncer) IsSynced() bool {
-	return false
+func (s *mockBlockState) GetFinalizedHeader(_, _ uint64) (*types.Header, error) {
+	return s.BestBlockHeader()
+}
+
+func (s *mockBlockState) GetHashByNumber(_ *big.Int) (common.Hash, error) {
+	return common.Hash{}, nil
 }
 
 type mockTransactionHandler struct{}
@@ -115,6 +125,7 @@ func newNetworkService(t *testing.T) *network.Service {
 // Test RPC's System.Health() response
 func TestSystemModule_Health(t *testing.T) {
 	net := newNetworkService(t)
+	net.Stop()
 	sys := NewSystemModule(net, nil, nil, nil, nil)
 
 	res := &SystemHealthResponse{}
@@ -145,6 +156,7 @@ func TestSystemModule_NetworkState(t *testing.T) {
 // Test RPC's System.Peers() response
 func TestSystemModule_Peers(t *testing.T) {
 	net := newNetworkService(t)
+	net.Stop()
 	sys := NewSystemModule(net, nil, nil, nil, nil)
 
 	res := &SystemPeersResponse{}
@@ -198,10 +210,9 @@ func (api *mockSystemAPI) SystemVersion() string {
 	return api.info.SystemVersion
 }
 
-func (api *mockSystemAPI) NodeName() string {
+func (api *mockSystemAPI) ChainName() string {
 	return api.genData.Name
 }
-
 func (api *mockSystemAPI) Properties() map[string]interface{} {
 	return nil
 }
@@ -342,10 +353,18 @@ func setupSystemModule(t *testing.T) *SystemModule {
 	}
 	aliceAcctEncoded, err := scale.Encode(aliceAcctInfo)
 	require.NoError(t, err)
-	err = ts.Set(aliceAcctStoKey, aliceAcctEncoded)
-	require.NoError(t, err)
+	ts.Set(aliceAcctStoKey, aliceAcctEncoded)
 
 	err = chain.Storage.StoreTrie(ts)
+	require.NoError(t, err)
+	err = chain.Block.AddBlock(&types.Block{
+		Header: &types.Header{
+			Number:     big.NewInt(1),
+			ParentHash: chain.Block.BestBlockHash(),
+			StateRoot:  ts.MustRoot(),
+		},
+		Body: &types.Body{},
+	})
 	require.NoError(t, err)
 
 	core := newCoreService(t, chain)
